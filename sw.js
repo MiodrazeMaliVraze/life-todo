@@ -1,5 +1,5 @@
 /* Minimal offline cache so the app opens without a connection. */
-const CACHE = 'life-todo-v1';
+const CACHE = 'life-todo-v2';
 const ASSETS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
@@ -16,6 +16,12 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // Only cache the app itself and the Firebase SDK files. Never touch
+  // Firestore/Auth traffic: its live-sync connections are long-running
+  // streams that must go straight to the network.
+  const url = new URL(e.request.url);
+  const cacheable = url.origin === self.location.origin || url.hostname === 'www.gstatic.com';
+  if (!cacheable) return;
   e.respondWith(
     fetch(e.request)
       .then(res => {

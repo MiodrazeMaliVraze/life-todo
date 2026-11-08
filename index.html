@@ -162,6 +162,24 @@
   .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
   .empty { color: var(--muted); font-size: .88rem; padding: 24px 4px; text-align: center; }
   .hint { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+
+  .auth {
+    position: fixed; inset: 0; z-index: 50; background: var(--bg);
+    display: grid; place-items: center; padding: 16px;
+  }
+  .auth[hidden] { display: none; }
+  .auth-card {
+    width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px;
+  }
+  .auth-card h2 { margin: 0; font-size: 1.2rem; }
+  .auth-card p { margin: 0 0 6px; color: var(--muted); font-size: .9rem; }
+  .auth-card input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 11px 12px; font-size: 16px; color: var(--text); font-family: inherit;
+  }
+  .auth-card .btn { box-shadow: none; margin-top: 4px; }
+  .auth-err { color: var(--missed); font-size: .85rem; min-height: 1.2em; }
 </style>
 </head>
 <body>
@@ -213,26 +231,51 @@
       <textarea id="tplChores"></textarea>
     </div>
     <div class="dlg-actions">
+      <button class="btn secondary" id="signOutBtn" style="margin-right:auto">Sign out</button>
       <button class="btn secondary" id="cancelSettings">Cancel</button>
       <button class="btn" id="saveSettings">Save</button>
     </div>
   </div>
 </dialog>
 
+<div id="authScreen" class="auth" hidden>
+  <form id="authForm" class="auth-card">
+    <h2>Life To Do</h2>
+    <p id="authMsg">Sign in to load your list.</p>
+    <input type="email" id="authEmail" placeholder="Email" autocomplete="username" required>
+    <input type="password" id="authPass" placeholder="Password" autocomplete="current-password" required>
+    <button class="btn" type="submit" id="authBtn">Sign in</button>
+    <div class="auth-err" id="authErr"></div>
+  </form>
+</div>
+
 <script>
 /* ---------------------------------------------------------------
+   FIREBASE CONFIG
+   Paste the web app config from the Firebase console here. These
+   values are public by design; access is controlled by Firestore
+   security rules. Leave as null to run in local-only mode.
+---------------------------------------------------------------- */
+const FIREBASE_CONFIG = null;
+
+/* ---------------------------------------------------------------
    STORAGE LAYER
-   Everything below talks to `Store` only. Swapping localStorage for
-   Firestore later means reimplementing these four methods and nothing
-   else in the app changes.
+   The UI talks only to `Store`, which keeps everything in memory.
+   Local mode persists to localStorage; cloud mode hands each write
+   to the Firestore layer (module script at the bottom), which also
+   pushes changes from other devices back into the cache.
 ---------------------------------------------------------------- */
 const Store = {
   KEY: 'lifeToDo.v1',
+  mode: FIREBASE_CONFIG ? 'cloud' : 'local',
+  cloud: null,              // set by the Firestore module: { saveSettings, saveWeek }
   _cache: null,
   _read() {
     if (this._cache) return this._cache;
     let raw = null;
-    try { raw = localStorage.getItem(this.KEY); } catch (e) { /* private mode */ }
+    if (this.mode === 'local') {
+      try { raw = localStorage.getItem(this.KEY); } catch (e) { /* private mode */ }
+    }
     this._cache = raw ? JSON.parse(raw) : null;
     if (!this._cache) this._cache = { weeks: {}, settings: defaultSettings() };
     if (!this._cache.settings) this._cache.settings = defaultSettings();
@@ -240,13 +283,24 @@ const Store = {
     return this._cache;
   },
   _write() {
+    if (this.mode !== 'local') return;
     try { localStorage.setItem(this.KEY, JSON.stringify(this._cache)); }
     catch (e) { /* storage unavailable; app still works in-memory */ }
   },
+  // Called by the Firestore layer with the server's view of the data.
+  hydrate(settings, weeks) {
+    this._cache = { settings: settings || defaultSettings(), weeks: weeks || {} };
+  },
   getSettings() { return this._read().settings; },
-  saveSettings(s) { this._read().settings = s; this._write(); },
+  saveSettings(s) {
+    this._read().settings = s;
+    if (this.cloud) this.cloud.saveSettings(s); else this._write();
+  },
   getWeek(id) { return this._read().weeks[id] || null; },
-  saveWeek(id, week) { this._read().weeks[id] = week; this._write(); },
+  saveWeek(id, week) {
+    this._read().weeks[id] = week;
+    if (this.cloud) this.cloud.saveWeek(id, week); else this._write();
+  },
   allWeekIds() { return Object.keys(this._read().weeks).sort(); }
 };
 
@@ -498,11 +552,124 @@ document.getElementById('saveSettings').addEventListener('click', () => {
 });
 
 /* ---------------------------- startup --------------------------- */
-render();
+// Re-render without stealing focus from an input the user is typing in.
+function safeRender() {
+  const a = document.activeElement;
+  if (a && a.tagName === 'INPUT' && board.contains(a)) { pendingRender = true; return; }
+  render();
+}
+let pendingRender = false;
+board.addEventListener('focusout', () => {
+  if (pendingRender) { pendingRender = false; setTimeout(render, 0); }
+});
+
+if (Store.mode === 'local') {
+  document.getElementById('signOutBtn').style.display = 'none';
+  render();
+}   // cloud mode renders after sign-in + first sync
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
+}
+</script>
+
+<script type="module">
+/* ---------------------------------------------------------------
+   FIRESTORE LAYER  (only runs when FIREBASE_CONFIG is set)
+   Data layout:
+     users/{uid}                 -> { settings }
+     users/{uid}/weeks/{weekId}  -> { sections }
+---------------------------------------------------------------- */
+if (FIREBASE_CONFIG) {
+  const V = '10.14.1';
+  const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } =
+    await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
+  const { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+          doc, collection, setDoc, onSnapshot } =
+    await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  await setPersistence(auth, browserLocalPersistence);   // stay signed in on this device
+  const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })  // works offline
+  });
+
+  const authScreen = document.getElementById('authScreen');
+  const authErr = document.getElementById('authErr');
+  let unsubs = [];
+
+  document.getElementById('authForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    authErr.textContent = '';
+    const btn = document.getElementById('authBtn');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      await signInWithEmailAndPassword(auth,
+        document.getElementById('authEmail').value.trim(),
+        document.getElementById('authPass').value);
+    } catch (e) {
+      authErr.textContent = /invalid|wrong|user-not-found|credential/i.test(e.code || '')
+        ? 'Email or password is incorrect.'
+        : 'Could not sign in. Check your connection and try again.';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', async () => {
+    document.getElementById('settingsDlg').close();
+    await signOut(auth);
+  });
+
+  onAuthStateChanged(auth, user => {
+    unsubs.forEach(u => u()); unsubs = [];
+    Store.cloud = null;
+    if (!user) {
+      board.innerHTML = '';
+      authScreen.hidden = false;
+      return;
+    }
+    authScreen.hidden = true;
+    board.innerHTML = '<div class="empty">Loading your list…</div>';
+
+    const userRef = doc(db, 'users', user.uid);
+    const weeksRef = collection(db, 'users', user.uid, 'weeks');
+    let settings, weeks, gotSettings = false, gotWeeks = false;
+
+    // Render only once BOTH have arrived, so the current week is never
+    // auto-created on top of a week that simply hasn't loaded yet.
+    const sync = () => {
+      if (!gotSettings || !gotWeeks) return;
+      const first = !Store.cloud;
+      Store.hydrate(settings, weeks);
+      Store.cloud = {
+        saveSettings: s => setDoc(userRef, { settings: s }, { merge: true }).catch(reportWriteError),
+        saveWeek: (id, w) => setDoc(doc(weeksRef, id), w).catch(reportWriteError)
+      };
+      first ? render() : safeRender();
+    };
+
+    unsubs.push(onSnapshot(userRef, snap => {
+      settings = snap.exists() ? snap.data().settings : null;
+      gotSettings = true; sync();
+    }, reportReadError));
+
+    unsubs.push(onSnapshot(weeksRef, snap => {
+      weeks = {};
+      snap.forEach(d => { weeks[d.id] = d.data(); });
+      gotWeeks = true; sync();
+    }, reportReadError));
+  });
+
+  function reportReadError(e) {
+    board.innerHTML = `<div class="empty">Couldn't load your data (${e.code || 'error'}). If this persists, the database rules may not allow this account.</div>`;
+  }
+  function reportWriteError(e) {
+    document.getElementById('progressLabel').textContent = `⚠ Last change didn't save (${e.code || 'error'})`;
+  }
 }
 </script>
 </body>
