@@ -190,6 +190,7 @@
     <div class="week-nav">
       <button class="iconbtn" id="prevWeek" title="Previous week">‹</button>
       <button class="iconbtn" id="nextWeek" title="Next week">›</button>
+      <button class="iconbtn" id="openSync" title="Sunday check-in">⇅</button>
       <button class="iconbtn" id="openSettings" title="Settings">⚙</button>
     </div>
   </div>
@@ -234,6 +235,23 @@
       <button class="btn secondary" id="signOutBtn" style="margin-right:auto">Sign out</button>
       <button class="btn secondary" id="cancelSettings">Cancel</button>
       <button class="btn" id="saveSettings">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="syncDlg">
+  <div class="dlg-body">
+    <h3>Sunday check-in</h3>
+    <p>Copy this week's list into your chat with Claude. When you're done talking, paste the plan Claude gives you below.</p>
+    <button class="btn secondary" id="copyWeekBtn" style="width:100%;box-shadow:none">Copy this week</button>
+    <div class="field" style="margin-top:18px">
+      <label>Paste plan</label>
+      <textarea id="planText" placeholder="WEEK 11.16.26&#10;BILLS&#10;[ ] Pay rent&#10;…"></textarea>
+      <div class="hint" id="planMsg"></div>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn secondary" id="closeSync">Close</button>
+      <button class="btn" id="applyPlan">Apply plan</button>
     </div>
   </div>
 </dialog>
@@ -555,6 +573,87 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   }
   Store.saveSettings(s);
   dlg.close();
+  render();
+});
+
+/* ----------------------- Sunday check-in -------------------------
+   Plain-text format shared with Claude, so the weekly conversation
+   can happen anywhere without access to the database:
+
+     WEEK 11.16.26
+     BILLS
+     [ ] Pay rent        open
+     [x] Pay comed       done
+     [-] Pay at&t        missed
+---------------------------------------------------------------- */
+const MARK = { open: '[ ]', done: '[x]', missed: '[-]' };
+
+function exportWeek(id) {
+  const w = Store.getWeek(id);
+  const lines = [prettyWeek(id).replace('Week of', 'WEEK')];
+  for (const g of GROUPS) {
+    lines.push('', g.label.toUpperCase());
+    for (const i of (w && w.sections[g.key]) || []) lines.push(`${MARK[i.status] || '[ ]'} ${i.text}`);
+  }
+  lines.push('', `Rep count: ${Store.getSettings().pushups}`);
+  return lines.join('\n');
+}
+
+function parsePlan(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  let id = null, group = null;
+  const sections = Object.fromEntries(GROUPS.map(g => [g.key, []]));
+  const byLabel = Object.fromEntries(GROUPS.map(g => [g.label.toLowerCase(), g.key]));
+  for (const line of lines) {
+    const wk = line.match(/^week(?: of)?\s+(\d{1,2})\.(\d{1,2})\.(\d{2})$/i);
+    if (wk) {
+      const d = new Date(2000 + Number(wk[3]), Number(wk[1]) - 1, Number(wk[2]));
+      id = weekId(d);
+      continue;
+    }
+    const head = line.replace(/:$/, '').toLowerCase();
+    if (byLabel[head]) { group = byLabel[head]; continue; }
+    const item = line.match(/^(?:\[( |x|-)\]|[-*•])\s*(.+)$/i);
+    if (item && group) {
+      const status = item[1] && item[1].toLowerCase() === 'x' ? 'done' : item[1] === '-' ? 'missed' : 'open';
+      sections[group].push({ text: item[2].trim(), status, fromTemplate: false });
+    }
+  }
+  const count = Object.values(sections).reduce((n, s) => n + s.length, 0);
+  return { id, sections, count };
+}
+
+const syncDlg = document.getElementById('syncDlg');
+const planMsg = document.getElementById('planMsg');
+document.getElementById('openSync').addEventListener('click', () => {
+  planMsg.textContent = '';
+  syncDlg.showModal();
+});
+document.getElementById('closeSync').addEventListener('click', () => syncDlg.close());
+
+document.getElementById('copyWeekBtn').addEventListener('click', async () => {
+  const text = exportWeek(current);
+  const btn = document.getElementById('copyWeekBtn');
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied ✓ — paste it into Claude';
+  } catch (e) {
+    // Clipboard blocked: show the text so it can be copied by hand.
+    document.getElementById('planText').value = text;
+    btn.textContent = 'Select the text below and copy it';
+  }
+  setTimeout(() => { btn.textContent = 'Copy this week'; }, 4000);
+});
+
+document.getElementById('applyPlan').addEventListener('click', () => {
+  const { id, sections, count } = parsePlan(document.getElementById('planText').value);
+  if (!id) { planMsg.textContent = 'Plan needs a first line like "WEEK 11.16.26".'; return; }
+  if (!count) { planMsg.textContent = 'No items found. Paste the whole plan from Claude.'; return; }
+  if (Store.getWeek(id) && !confirm(`Replace the existing list for ${prettyWeek(id)}?`)) return;
+  Store.saveWeek(id, { sections });
+  document.getElementById('planText').value = '';
+  syncDlg.close();
+  current = id;
   render();
 });
 
