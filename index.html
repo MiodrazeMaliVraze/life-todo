@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1a1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -55,7 +55,9 @@
   html, body { margin: 0; padding: 0; }
   /* Stops iOS double-tap-to-zoom when tapping buttons quickly (e.g. the
      week arrows). Pinch zoom still works. */
-  html, button, li.item, .iconbtn { touch-action: manipulation; }
+  /* No zooming at all: block pinch (pan-only) and double-tap zoom. */
+  html, body { touch-action: pan-x pan-y; }
+  button, li.item, .iconbtn { touch-action: manipulation; }
   /* iOS zooms in on any text field under 16px when it's focused. */
   input, textarea, select { font-size: 16px !important; }
   body {
@@ -78,13 +80,17 @@
     margin: 0 0 18px;
   }
   .hrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 680px; margin: 0 auto; }
-  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
-  .week-nav { display: flex; align-items: center; gap: 4px; }
+  h1 { margin: 0; display: flex; flex-direction: column; align-items: center; line-height: 1.1; min-width: 78px; }
+  .wk-label { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .wk-date { font-size: 1.12rem; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .week-nav { display: flex; align-items: center; gap: 6px; }
   .iconbtn {
     background: none; border: 1px solid var(--border); color: var(--text);
-    width: 32px; height: 32px; border-radius: 8px; font-size: 15px;
+    width: 40px; height: 40px; border-radius: 10px; font-size: 17px;
     cursor: pointer; display: grid; place-items: center; padding: 0;
   }
+  /* Big, easy-to-hit week arrows (Apple's 44pt minimum touch size). */
+  .iconbtn.arrow { width: 48px; height: 48px; font-size: 28px; line-height: 1; padding-bottom: 3px; }
   .iconbtn:active { background: var(--border); }
   .progress-bar { height: 3px; background: var(--border); border-radius: 2px; margin: 10px auto 0; max-width: 680px; overflow: hidden; }
   .progress-fill { height: 100%; background: var(--done); width: 0%; transition: width .3s ease; }
@@ -205,10 +211,12 @@
 
 <header>
   <div class="hrow">
-    <h1 id="weekTitle">Life To Do</h1>
     <div class="week-nav">
-      <button class="iconbtn" id="prevWeek" title="Previous week">‹</button>
-      <button class="iconbtn" id="nextWeek" title="Next week">›</button>
+      <button class="iconbtn arrow" id="prevWeek" title="Previous week" aria-label="Previous week">‹</button>
+      <h1 id="weekTitle">Life To Do</h1>
+      <button class="iconbtn arrow" id="nextWeek" title="Next week" aria-label="Next week">›</button>
+    </div>
+    <div class="week-nav">
       <button class="iconbtn" id="openSync" title="Sunday check-in">⇅</button>
       <button class="iconbtn" id="openSettings" title="Settings">⚙</button>
     </div>
@@ -458,7 +466,8 @@ const board = document.getElementById('board');
 
 function render() {
   const week = getOrAutoCreate(current);
-  document.getElementById('weekTitle').textContent = prettyWeek(current);
+  document.getElementById('weekTitle').innerHTML =
+    `<span class="wk-label">Week of</span><span class="wk-date">${prettyWeek(current).replace('Week of ', '')}</span>`;
   board.innerHTML = '';
 
   const rollBtn = document.getElementById('rollBtn');
@@ -675,6 +684,10 @@ document.getElementById('applyPlan').addEventListener('click', () => {
   current = id;
   render();
 });
+
+/* iOS Safari ignores user-scalable=no for pinch; cancel its gesture events. */
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t =>
+  document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 
 /* ---------------------------- startup --------------------------- */
 // Re-render without stealing focus from an input the user is typing in.
