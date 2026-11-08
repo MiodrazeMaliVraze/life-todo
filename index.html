@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Life To Do">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Life To Do</title>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --border: #e4e1db;
+    --text: #1c1b19;
+    --muted: #6f6a62;
+    --open: #ffd94a;
+    --open-soft: #fff8dc;
+    --done: #4ade80;
+    --done-soft: #e8fbef;
+    --missed: #f87171;
+    --missed-soft: #fdeaea;
+    --accent: #1c1b19;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413;
+      --surface: #1e1e1c;
+      --border: #32312e;
+      --text: #f2f0ec;
+      --muted: #9a948a;
+      --open-soft: #3a3418;
+      --done-soft: #16301f;
+      --missed-soft: #351c1c;
+      --accent: #f2f0ec;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413;
+    --surface: #1e1e1c;
+    --border: #32312e;
+    --text: #f2f0ec;
+    --muted: #9a948a;
+    --open-soft: #3a3418;
+    --done-soft: #16301f;
+    --missed-soft: #351c1c;
+    --accent: #f2f0ec;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-x: hidden;
+  }
+
+  .wrap { max-width: 680px; margin: 0 auto; padding: 0 16px 120px; }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--bg);
+    padding: calc(env(safe-area-inset-top) + 14px) 16px 10px;
+    border-bottom: 1px solid var(--border);
+    margin: 0 0 18px;
+  }
+  .hrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  .week-nav { display: flex; align-items: center; gap: 4px; }
+  .iconbtn {
+    background: none; border: 1px solid var(--border); color: var(--text);
+    width: 32px; height: 32px; border-radius: 8px; font-size: 15px;
+    cursor: pointer; display: grid; place-items: center; padding: 0;
+  }
+  .iconbtn:active { background: var(--border); }
+  .progress-bar { height: 3px; background: var(--border); border-radius: 2px; margin: 10px auto 0; max-width: 680px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--done); width: 0%; transition: width .3s ease; }
+  .progress-label { font-size: .75rem; color: var(--muted); margin-top: 6px; max-width: 680px; margin-inline: auto; }
+
+  section.group { margin-bottom: 26px; }
+  .ghead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+  .ghead h2 {
+    font-size: .76rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .09em; color: var(--muted); margin: 0;
+  }
+  .gcount { font-size: .74rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  ul.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  li.item {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 11px 12px;
+    cursor: pointer; user-select: none;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  li.item .dot {
+    flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid var(--open); background: transparent; margin-top: 3px;
+  }
+  li.item .label { flex: 1 1 auto; font-size: .935rem; word-break: break-word; }
+  li.item .del {
+    flex: 0 0 auto; background: none; border: none; color: var(--muted);
+    font-size: 17px; line-height: 1; cursor: pointer; padding: 2px 4px; opacity: .45;
+  }
+  li.item .del:active { opacity: 1; }
+
+  li.item[data-status="open"] { background: var(--open-soft); border-color: var(--open); }
+  li.item[data-status="open"] .dot { border-color: var(--open); }
+  li.item[data-status="done"] { background: var(--done-soft); border-color: var(--done); }
+  li.item[data-status="done"] .dot { border-color: var(--done); background: var(--done); }
+  li.item[data-status="done"] .label { text-decoration: line-through; opacity: .62; }
+  li.item[data-status="missed"] { background: var(--missed-soft); border-color: var(--missed); }
+  li.item[data-status="missed"] .dot { border-color: var(--missed); background: var(--missed); }
+
+  .additem {
+    display: flex; gap: 6px; margin-top: 6px;
+  }
+  .additem input {
+    flex: 1; background: var(--surface); border: 1px dashed var(--border);
+    border-radius: var(--radius); padding: 10px 12px; font-size: .9rem;
+    color: var(--text); font-family: inherit;
+  }
+  .additem input:focus { outline: none; border-style: solid; border-color: var(--muted); }
+
+  .fab {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom) + 18px);
+    display: flex; gap: 8px; z-index: 30;
+  }
+  .btn {
+    background: var(--accent); color: var(--bg); border: none;
+    padding: 12px 20px; border-radius: 999px; font-size: .9rem; font-weight: 600;
+    cursor: pointer; font-family: inherit; box-shadow: 0 4px 16px rgba(0,0,0,.18);
+  }
+  .btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn:active { opacity: .85; }
+
+  dialog {
+    border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+    color: var(--text); padding: 0; max-width: 460px; width: calc(100% - 32px);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg-body { padding: 20px; }
+  .dlg-body h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .dlg-body p { margin: 0 0 16px; color: var(--muted); font-size: .88rem; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
+  .field input, .field textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 11px; color: var(--text);
+    font-family: inherit; font-size: .92rem;
+  }
+  .field textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
+  .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .empty { color: var(--muted); font-size: .88rem; padding: 24px 4px; text-align: center; }
+  .hint { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <h1 id="weekTitle">Life To Do</h1>
+    <div class="week-nav">
+      <button class="iconbtn" id="prevWeek" title="Previous week">‹</button>
+      <button class="iconbtn" id="nextWeek" title="Next week">›</button>
+      <button class="iconbtn" id="openSettings" title="Settings">⚙</button>
+    </div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="progress-label" id="progressLabel"></div>
+</header>
+
+<div class="wrap">
+  <main id="board"></main>
+</div>
+
+<div class="fab">
+  <button class="btn secondary" id="rollBtn">Start next week</button>
+</div>
+
+<dialog id="settingsDlg">
+  <div class="dlg-body">
+    <h3>Settings</h3>
+    <p>Recurring items seed every new week. One per line.</p>
+    <div class="field">
+      <label>Rep count</label>
+      <input type="number" id="setPushups" min="0" max="999">
+      <div class="hint">Used in the Exercise template wherever you write {n}.</div>
+    </div>
+    <div class="field">
+      <label>Bills template</label>
+      <textarea id="tplBills"></textarea>
+    </div>
+    <div class="field">
+      <label>Exercise template</label>
+      <textarea id="tplExercise"></textarea>
+    </div>
+    <div class="field">
+      <label>Nutrition template</label>
+      <textarea id="tplNutrition"></textarea>
+    </div>
+    <div class="field">
+      <label>Chores template</label>
+      <textarea id="tplChores"></textarea>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn secondary" id="cancelSettings">Cancel</button>
+      <button class="btn" id="saveSettings">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+/* ---------------------------------------------------------------
+   STORAGE LAYER
+   Everything below talks to `Store` only. Swapping localStorage for
+   Firestore later means reimplementing these four methods and nothing
+   else in the app changes.
+---------------------------------------------------------------- */
+const Store = {
+  KEY: 'lifeToDo.v1',
+  _cache: null,
+  _read() {
+    if (this._cache) return this._cache;
+    let raw = null;
+    try { raw = localStorage.getItem(this.KEY); } catch (e) { /* private mode */ }
+    this._cache = raw ? JSON.parse(raw) : null;
+    if (!this._cache) this._cache = { weeks: {}, settings: defaultSettings() };
+    if (!this._cache.settings) this._cache.settings = defaultSettings();
+    if (!this._cache.weeks) this._cache.weeks = {};
+    return this._cache;
+  },
+  _write() {
+    try { localStorage.setItem(this.KEY, JSON.stringify(this._cache)); }
+    catch (e) { /* storage unavailable; app still works in-memory */ }
+  },
+  getSettings() { return this._read().settings; },
+  saveSettings(s) { this._read().settings = s; this._write(); },
+  getWeek(id) { return this._read().weeks[id] || null; },
+  saveWeek(id, week) { this._read().weeks[id] = week; this._write(); },
+  allWeekIds() { return Object.keys(this._read().weeks).sort(); }
+};
+
+/* --------------------------- defaults --------------------------- */
+function defaultSettings() {
+  return {
+    // Generic placeholders only. Personal lists live in the user's own data
+    // (Settings), never in this public code.
+    pushups: 10,
+    templates: {
+      bills: ['Pay rent', 'Pay utilities'],
+      exercise: [
+        'Monday - workout - {n} pushups',
+        'Wednesday - workout - {n} pushups',
+        'Friday - workout - {n} pushups'
+      ],
+      nutrition: ['Plan meals for week', 'Grocery list'],
+      chores: ['Laundry', 'Dishes']
+    }
+  };
+}
+
+const GROUPS = [
+  { key: 'bills', label: 'Bills' },
+  { key: 'exercise', label: 'Exercise' },
+  { key: 'nutrition', label: 'Nutrition' },
+  { key: 'chores', label: 'Chores' }
+];
+const CYCLE = { open: 'done', done: 'missed', missed: 'open' };
+
+/* ---------------------------- dates ----------------------------- */
+function mondayOf(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = x.getDay();                 // 0 Sun .. 6 Sat
+  const diff = day === 0 ? 1 : 1 - day;   // Sunday rolls forward to tomorrow
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+function weekId(d) {
+  const m = mondayOf(d);
+  const p = n => String(n).padStart(2, '0');
+  return `${m.getFullYear()}-${p(m.getMonth() + 1)}-${p(m.getDate())}`;
+}
+function idToDate(id) {
+  const [y, m, d] = id.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function prettyWeek(id) {
+  const d = idToDate(id);
+  const p = n => String(n).padStart(2, '0');
+  return `Week of ${p(d.getMonth() + 1)}.${p(d.getDate())}.${String(d.getFullYear()).slice(2)}`;
+}
+function shiftWeek(id, delta) {
+  const d = idToDate(id);
+  d.setDate(d.getDate() + delta * 7);
+  return weekId(d);
+}
+
+/* --------------------------- week build ------------------------- */
+function buildWeek(fromWeekId) {
+  const s = Store.getSettings();
+  const prev = fromWeekId ? Store.getWeek(fromWeekId) : null;
+  const week = { sections: {} };
+
+  for (const g of GROUPS) {
+    const tpl = (s.templates[g.key] || []).map(t => ({
+      text: t.replace(/\{n\}/g, s.pushups),
+      status: 'open',
+      fromTemplate: true
+    }));
+
+    // Carry forward anything still open that isn't already seeded by the template.
+    const carried = [];
+    if (prev && prev.sections[g.key]) {
+      const seeded = new Set(tpl.map(i => i.text.toLowerCase()));
+      for (const item of prev.sections[g.key]) {
+        if (item.status === 'open' && !item.fromTemplate && !seeded.has(item.text.toLowerCase())) {
+          carried.push({ text: item.text, status: 'open', fromTemplate: false, carried: true });
+        }
+      }
+    }
+    week.sections[g.key] = [...tpl, ...carried];
+  }
+  return week;
+}
+
+/* ----------------------------- state ---------------------------- */
+let current = weekId(new Date());
+
+// Builds a week from the most recent earlier week (for carry-over) and saves it.
+function createWeek(id) {
+  const ids = Store.allWeekIds().filter(x => x < id);
+  const prevId = ids.length ? ids[ids.length - 1] : null;
+  const w = buildWeek(prevId);
+  Store.saveWeek(id, w);
+  return w;
+}
+
+// Only the current week is created automatically. Browsing to other weeks
+// never creates them, so paging around can't litter history with empty weeks
+// or create a future week before last week's items are ready to carry.
+function getOrAutoCreate(id) {
+  const w = Store.getWeek(id);
+  if (w) return w;
+  if (id === weekId(new Date())) return createWeek(id);
+  return null;
+}
+
+/* ------------------------------ UI ------------------------------ */
+const board = document.getElementById('board');
+
+function render() {
+  const week = getOrAutoCreate(current);
+  document.getElementById('weekTitle').textContent = prettyWeek(current);
+  board.innerHTML = '';
+
+  const rollBtn = document.getElementById('rollBtn');
+  if (!week) {
+    rollBtn.style.display = 'none';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.innerHTML = '<p>No list for this week.</p>';
+    const make = document.createElement('button');
+    make.className = 'btn';
+    make.textContent = 'Create this week';
+    make.addEventListener('click', () => { createWeek(current); render(); });
+    empty.appendChild(make);
+    board.appendChild(empty);
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('progressLabel').textContent = '';
+    return;
+  }
+  rollBtn.style.display = '';
+
+  let total = 0, done = 0;
+
+  for (const g of GROUPS) {
+    const items = week.sections[g.key] || [];
+    const gdone = items.filter(i => i.status === 'done').length;
+    total += items.length; done += gdone;
+
+    const sec = document.createElement('section');
+    sec.className = 'group';
+
+    const head = document.createElement('div');
+    head.className = 'ghead';
+    head.innerHTML = `<h2>${g.label}</h2><span class="gcount">${gdone}/${items.length}</span>`;
+    sec.appendChild(head);
+
+    const ul = document.createElement('ul');
+    ul.className = 'items';
+
+    items.forEach((item, idx) => {
+      const li = document.createElement('li');
+      li.className = 'item';
+      li.dataset.status = item.status;
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = item.text;
+
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '×';
+      del.title = 'Remove';
+      del.addEventListener('click', ev => {
+        ev.stopPropagation();
+        if (!confirm(`Remove "${item.text}"?`)) return;
+        items.splice(idx, 1);
+        Store.saveWeek(current, week);
+        render();
+      });
+
+      li.append(dot, label, del);
+      li.addEventListener('click', () => {
+        item.status = CYCLE[item.status] || 'open';
+        Store.saveWeek(current, week);
+        render();
+      });
+      ul.appendChild(li);
+    });
+
+    sec.appendChild(ul);
+
+    const add = document.createElement('div');
+    add.className = 'additem';
+    const inp = document.createElement('input');
+    inp.placeholder = `Add to ${g.label.toLowerCase()}…`;
+    inp.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' && inp.value.trim()) {
+        items.push({ text: inp.value.trim(), status: 'open', fromTemplate: false });
+        inp.value = '';
+        Store.saveWeek(current, week);
+        render();
+      }
+    });
+    add.appendChild(inp);
+    sec.appendChild(add);
+
+    board.appendChild(sec);
+  }
+
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent =
+    total ? `${done} of ${total} done · ${pct}%` : 'Nothing here yet';
+}
+
+/* --------------------------- controls --------------------------- */
+document.getElementById('prevWeek').addEventListener('click', () => {
+  current = shiftWeek(current, -1); render();
+});
+document.getElementById('nextWeek').addEventListener('click', () => {
+  current = shiftWeek(current, 1); render();
+});
+document.getElementById('rollBtn').addEventListener('click', () => {
+  const next = shiftWeek(current, 1);
+  if (!Store.getWeek(next)) createWeek(next);
+  current = next;
+  render();
+});
+
+/* --------------------------- settings --------------------------- */
+const dlg = document.getElementById('settingsDlg');
+document.getElementById('openSettings').addEventListener('click', () => {
+  const s = Store.getSettings();
+  document.getElementById('setPushups').value = s.pushups;
+  for (const g of GROUPS) {
+    const el = document.getElementById('tpl' + g.label);
+    if (el) el.value = (s.templates[g.key] || []).join('\n');
+  }
+  dlg.showModal();
+});
+document.getElementById('cancelSettings').addEventListener('click', () => dlg.close());
+document.getElementById('saveSettings').addEventListener('click', () => {
+  const s = Store.getSettings();
+  const n = parseInt(document.getElementById('setPushups').value, 10);
+  s.pushups = Number.isFinite(n) ? n : s.pushups;
+  for (const g of GROUPS) {
+    const el = document.getElementById('tpl' + g.label);
+    if (el) s.templates[g.key] = el.value.split('\n').map(t => t.trim()).filter(Boolean);
+  }
+  Store.saveSettings(s);
+  dlg.close();
+  render();
+});
+
+/* ---------------------------- startup --------------------------- */
+render();
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
