@@ -53,6 +53,11 @@
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; }
+  /* Stops iOS double-tap-to-zoom when tapping buttons quickly (e.g. the
+     week arrows). Pinch zoom still works. */
+  html, button, li.item, .iconbtn { touch-action: manipulation; }
+  /* iOS zooms in on any text field under 16px when it's focused. */
+  input, textarea, select { font-size: 16px !important; }
   body {
     background: var(--bg);
     color: var(--text);
@@ -146,9 +151,16 @@
   dialog {
     border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
     color: var(--text); padding: 0; max-width: 460px; width: calc(100% - 32px);
+    /* Never taller than the visible screen; the body scrolls instead. */
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: hidden;
   }
   dialog::backdrop { background: rgba(0,0,0,.45); }
-  .dlg-body { padding: 20px; }
+  .dlg-body {
+    padding: 20px 20px 0;
+    max-height: inherit; overflow-y: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
   .dlg-body h3 { margin: 0 0 6px; font-size: 1.05rem; }
   .dlg-body p { margin: 0 0 16px; color: var(--muted); font-size: .88rem; }
   .field { margin-bottom: 14px; }
@@ -159,7 +171,14 @@
     font-family: inherit; font-size: .92rem;
   }
   .field textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
-  .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  /* Buttons stay pinned to the bottom of the panel while the fields scroll. */
+  .dlg-actions {
+    display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+    position: sticky; bottom: 0; background: var(--surface);
+    margin: 18px -20px 0; padding: 12px 20px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .dlg-actions .btn { box-shadow: none; }
   .empty { color: var(--muted); font-size: .88rem; padding: 24px 4px; text-align: center; }
   .hint { font-size: .78rem; color: var(--muted); margin-top: 4px; }
 
