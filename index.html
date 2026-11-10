@@ -111,7 +111,7 @@
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 11px 12px;
     cursor: pointer; user-select: none;
-    transition: background .12s ease, border-color .12s ease;
+    transition: background .12s ease, border-color .12s ease, box-shadow .4s ease;
   }
   li.item .dot {
     flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%;
@@ -132,15 +132,70 @@
   li.item[data-status="missed"] { background: var(--missed-soft); border-color: var(--missed); }
   li.item[data-status="missed"] .dot { border-color: var(--missed); background: var(--missed); }
 
-  .additem {
-    display: flex; gap: 6px; margin-top: 6px;
+  li.item { -webkit-touch-callout: none; }
+  li.item .tag {
+    flex: 0 0 auto; font-size: .68rem; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; margin-top: 1px;
   }
-  .additem input {
-    flex: 1; background: var(--surface); border: 1px dashed var(--border);
-    border-radius: var(--radius); padding: 10px 12px; font-size: .9rem;
-    color: var(--text); font-family: inherit;
+  li.item.new { box-shadow: 0 0 0 3px rgba(74, 222, 128, .45); }
+
+  /* Undo toast shown after adding an item. */
+  .toast {
+    position: fixed; left: 16px; right: 16px; max-width: 520px; margin: 0 auto;
+    bottom: calc(env(safe-area-inset-bottom) + 86px); z-index: 40;
+    background: var(--accent); color: var(--bg); border-radius: 12px;
+    padding: 4px 6px 4px 14px; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; font-size: .9rem; box-shadow: 0 6px 20px rgba(0,0,0,.25);
   }
-  .additem input:focus { outline: none; border-style: solid; border-color: var(--muted); }
+  .toast[hidden] { display: none; }
+  .toast button {
+    background: none; border: none; color: inherit; font: inherit; font-weight: 700;
+    min-height: 44px; padding: 0 12px; cursor: pointer;
+  }
+
+  /* Add / edit item: a bottom sheet built on <dialog>. */
+  dialog#itemDlg {
+    margin: auto auto 0; width: 100%; max-width: 520px;
+    border-radius: 22px 22px 0 0; border-bottom: none;
+    max-height: calc(var(--vvh, 100dvh) - 10px);
+  }
+  dialog#itemDlg[open] { animation: sheetUp .2s ease-out; }
+  @keyframes sheetUp { from { transform: translateY(36px); opacity: .5; } to { transform: none; opacity: 1; } }
+  .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: -8px auto 14px; }
+  #itemText {
+    width: 100%; background: var(--bg); color: var(--text); font-family: inherit;
+    border: 1.5px solid var(--text); border-radius: 12px; padding: 13px 14px;
+  }
+  #itemText:focus { outline: none; }
+  .lbl {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: .74rem; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .07em; margin: 16px 0 8px;
+  }
+  .lbl i { font-style: normal; font-weight: 500; text-transform: none; letter-spacing: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    border-radius: 999px; padding: 0 15px; min-height: 40px; font: inherit; font-size: .9rem; cursor: pointer;
+  }
+  .chip.on { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+  .swrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; cursor: pointer; }
+  .swrow b { display: block; font-size: .95rem; }
+  .swrow small { display: block; color: var(--muted); font-size: .78rem; }
+  .swin {
+    -webkit-appearance: none; appearance: none; flex: 0 0 auto; margin: 0;
+    width: 50px; height: 30px; border-radius: 15px; background: var(--border);
+    position: relative; cursor: pointer; transition: background .15s ease;
+  }
+  .swin::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s ease;
+  }
+  .swin:checked { background: var(--accent); }
+  .swin:checked::after { transform: translateX(20px); }
+  #itemDlg .dlg-actions { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  #itemSubmit { flex: 1 1 auto; }
 
   .fab {
     position: fixed; left: 50%; transform: translateX(-50%);
@@ -153,6 +208,8 @@
     cursor: pointer; font-family: inherit; box-shadow: 0 4px 16px rgba(0,0,0,.18);
   }
   .btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .fab .btn { white-space: nowrap; }
+  @media (max-width: 360px) { .fab { gap: 6px; } .fab .btn { padding: 12px 14px; } }
   .btn:active { opacity: .85; }
 
   dialog {
@@ -232,7 +289,36 @@
 
 <div class="fab">
   <button class="btn secondary" id="rollBtn">Start next week</button>
+  <button class="btn" id="addBtn">+ Add item</button>
 </div>
+
+<div class="toast" id="toast" hidden role="status">
+  <span id="toastMsg"></span>
+  <button type="button" id="toastUndo">Undo</button>
+</div>
+
+<dialog id="itemDlg">
+  <form class="dlg-body" id="itemForm" autocomplete="off">
+    <div class="grab"></div>
+    <h3 id="itemTitle">Add item</h3>
+    <input type="text" id="itemText" enterkeyhint="done" autocapitalize="sentences"
+           autocorrect="on" placeholder="What needs doing?" maxlength="200">
+    <div id="groupField">
+      <div class="lbl">Section <i>suggested from your text</i></div>
+      <div class="chips" id="groupChips"></div>
+    </div>
+    <div class="lbl">Day <i>optional</i></div>
+    <div class="chips" id="dayChips"></div>
+    <label class="swrow" id="repeatField">
+      <span><b>Repeat every week</b><small id="repeatHint"></small></span>
+      <input type="checkbox" class="swin" id="itemRepeat">
+    </label>
+    <div class="dlg-actions">
+      <button type="button" class="btn secondary" id="itemCancel">Cancel</button>
+      <button type="submit" class="btn" id="itemSubmit">Add</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="settingsDlg">
   <div class="dlg-body">
@@ -442,6 +528,7 @@ function buildWeek(fromWeekId) {
 
 /* ----------------------------- state ---------------------------- */
 let current = weekId(new Date());
+let flash = null;   // { group, text } of the item just added, highlighted briefly
 
 // Builds a week from the most recent earlier week (for carry-over) and saves it.
 function createWeek(id) {
@@ -472,8 +559,10 @@ function render() {
   board.innerHTML = '';
 
   const rollBtn = document.getElementById('rollBtn');
+  const addBtn = document.getElementById('addBtn');
   if (!week) {
     rollBtn.style.display = 'none';
+    addBtn.style.display = 'none';
     const empty = document.createElement('div');
     empty.className = 'empty';
     empty.innerHTML = '<p>No list for this week.</p>';
@@ -488,6 +577,7 @@ function render() {
     return;
   }
   rollBtn.style.display = '';
+  addBtn.style.display = '';
 
   let total = 0, done = 0;
 
@@ -507,9 +597,11 @@ function render() {
     const ul = document.createElement('ul');
     ul.className = 'items';
 
+    const flashIdx = flash && flash.group === g.key ? items.map(i => i.text).lastIndexOf(flash.text) : -1;
+
     items.forEach((item, idx) => {
       const li = document.createElement('li');
-      li.className = 'item';
+      li.className = 'item' + (idx === flashIdx ? ' new' : '');
       li.dataset.status = item.status;
 
       const dot = document.createElement('span');
@@ -531,8 +623,30 @@ function render() {
         render();
       });
 
-      li.append(dot, label, del);
+      if (item.day) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = item.day;
+        li.append(dot, label, tag, del);
+      } else {
+        li.append(dot, label, del);
+      }
+
+      // Tap cycles status; press and hold opens the item for editing.
+      let holdTimer = null, held = false, sx = 0, sy = 0;
+      const cancelHold = () => { clearTimeout(holdTimer); holdTimer = null; };
+      li.addEventListener('pointerdown', ev => {
+        if (ev.target === del) return;
+        held = false; sx = ev.clientX; sy = ev.clientY;
+        holdTimer = setTimeout(() => { held = true; openItemSheet('edit', { group: g.key, item }); }, 550);
+      });
+      li.addEventListener('pointermove', ev => {
+        if (holdTimer && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 10) cancelHold();
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => li.addEventListener(t, cancelHold));
+      li.addEventListener('contextmenu', ev => ev.preventDefault());
       li.addEventListener('click', () => {
+        if (held) { held = false; return; }
         item.status = CYCLE[item.status] || 'open';
         Store.saveWeek(current, week);
         render();
@@ -541,22 +655,6 @@ function render() {
     });
 
     sec.appendChild(ul);
-
-    const add = document.createElement('div');
-    add.className = 'additem';
-    const inp = document.createElement('input');
-    inp.placeholder = `Add to ${g.label.toLowerCase()}…`;
-    inp.addEventListener('keydown', ev => {
-      if (ev.key === 'Enter' && inp.value.trim()) {
-        items.push({ text: inp.value.trim(), status: 'open', fromTemplate: false });
-        inp.value = '';
-        Store.saveWeek(current, week);
-        render();
-      }
-    });
-    add.appendChild(inp);
-    sec.appendChild(add);
-
     board.appendChild(sec);
   }
 
@@ -578,6 +676,189 @@ document.getElementById('rollBtn').addEventListener('click', () => {
   if (!Store.getWeek(next)) createWeek(next);
   current = next;
   render();
+});
+
+/* ------------------------ add / edit sheet ----------------------- */
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+// Generic keyword hints; anything unmatched defaults to Chores.
+const SUGGEST = [
+  ['bills', /\b(pay|bill|bills|rent|insurance|invoice|due|subscription|venmo|tax|taxes|mortgage|utilit\w*)\b/i],
+  ['exercise', /\b(lift|lifting|run|running|bike|biking|cycle|walk|workout|gym|stretch|yoga|swim|hike|pushups?|cardio)\b/i],
+  ['nutrition', /\b(meal|meals|grocer\w*|shopping|cook|cooking|costco|recipe|breakfast|lunch|dinner|snacks?|protein)\b/i]
+];
+function suggestGroup(text) {
+  for (const [key, re] of SUGGEST) if (re.test(text)) return key;
+  return 'chores';
+}
+const groupLabel = key => GROUPS.find(g => g.key === key).label;
+
+const itemDlg = document.getElementById('itemDlg');
+const itemText = document.getElementById('itemText');
+const itemRepeat = document.getElementById('itemRepeat');
+let sheet = null;   // { mode: 'add' | 'edit', group, day, picked, target }
+
+function chip(label, on, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'chip' + (on ? ' on' : '');
+  b.textContent = label;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  // Keep the keyboard up while choosing options.
+  b.addEventListener('mousedown', ev => ev.preventDefault());
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function paintSheet() {
+  const gc = document.getElementById('groupChips');
+  gc.innerHTML = '';
+  for (const g of GROUPS) {
+    gc.appendChild(chip(g.label, sheet.group === g.key, () => {
+      sheet.group = g.key; sheet.picked = true; paintSheet();
+    }));
+  }
+  const dc = document.getElementById('dayChips');
+  dc.innerHTML = '';
+  dc.appendChild(chip('Any day', !sheet.day, () => { sheet.day = null; paintSheet(); }));
+  for (const d of DAYS) {
+    dc.appendChild(chip(d, sheet.day === d, () => { sheet.day = d; paintSheet(); }));
+  }
+  document.getElementById('itemSubmit').textContent =
+    sheet.mode === 'edit' ? 'Save' : `Add to ${groupLabel(sheet.group)}`;
+  document.getElementById('repeatHint').textContent =
+    `Adds it to your ${groupLabel(sheet.group)} template`;
+}
+
+function openItemSheet(mode, target) {
+  sheet = { mode, group: 'chores', day: null, picked: false, target: null };
+  const editing = mode === 'edit';
+  if (editing) {
+    sheet.group = target.group;
+    sheet.day = target.item.day || null;
+    sheet.target = target;
+    itemText.value = target.item.text;
+  } else {
+    itemText.value = '';
+  }
+  itemRepeat.checked = false;
+  document.getElementById('itemTitle').textContent = editing ? 'Edit item' : 'Add item';
+  document.getElementById('groupField').hidden = editing;
+  document.getElementById('repeatField').hidden = editing;
+  paintSheet();
+  if (!itemDlg.open) itemDlg.showModal();
+  itemText.focus();
+  if (editing) itemText.select();
+}
+
+document.getElementById('addBtn').addEventListener('click', () => openItemSheet('add'));
+document.getElementById('itemCancel').addEventListener('click', () => itemDlg.close());
+// Tap the dimmed area outside the sheet to dismiss it.
+itemDlg.addEventListener('click', ev => { if (ev.target === itemDlg) itemDlg.close(); });
+itemText.addEventListener('input', () => {
+  if (sheet && sheet.mode === 'add' && !sheet.picked) {
+    sheet.group = suggestGroup(itemText.value);
+    paintSheet();
+  }
+});
+
+// Lift the sheet above the iOS keyboard.
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const fit = () => {
+    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    itemDlg.style.marginBottom = kb + 'px';
+    itemDlg.style.setProperty('--vvh', vv.height + 'px');
+  };
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+  itemDlg.addEventListener('close', () => {
+    itemDlg.style.marginBottom = '';
+    itemDlg.style.removeProperty('--vvh');
+  });
+}
+
+let toastTimer = null;
+function showToast(msg, onUndo) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastMsg').innerHTML = msg;
+  document.getElementById('toastUndo').onclick = () => { hideToast(); onUndo(); };
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 6000);
+}
+function hideToast() {
+  clearTimeout(toastTimer);
+  document.getElementById('toast').hidden = true;
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+document.getElementById('itemForm').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const text = itemText.value.trim();
+  if (!text) { itemText.focus(); return; }
+  const wk = current;
+  const week = Store.getWeek(wk);
+  if (!week) { itemDlg.close(); return; }
+
+  if (sheet.mode === 'edit') {
+    const arr = week.sections[sheet.target.group] || [];
+    const orig = sheet.target.item;
+    const item = arr.find(i => i === orig) || arr.find(i => i.text === orig.text);
+    if (item) {
+      item.text = text;
+      if (sheet.day) item.day = sheet.day; else delete item.day;
+      Store.saveWeek(wk, week);
+    }
+    itemDlg.close();
+    render();
+    return;
+  }
+
+  const group = sheet.group;
+  const repeat = itemRepeat.checked;
+  const arr = week.sections[group] || (week.sections[group] = []);
+  const item = { text, status: 'open', fromTemplate: repeat };
+  if (sheet.day) item.day = sheet.day;   // never write undefined: Firestore rejects it
+  arr.push(item);
+
+  let addedToTemplate = false;
+  if (repeat) {
+    const s = Store.getSettings();
+    const tpl = s.templates[group] || (s.templates[group] = []);
+    if (!tpl.some(t => t.toLowerCase() === text.toLowerCase())) {
+      tpl.push(text);
+      Store.saveSettings(s);
+      addedToTemplate = true;
+    }
+  }
+  Store.saveWeek(wk, week);
+
+  itemDlg.close();
+  flash = { group, text };
+  render();
+  const el = board.querySelector('li.new');
+  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  setTimeout(() => {
+    flash = null;
+    board.querySelectorAll('li.new').forEach(e => e.classList.remove('new'));
+  }, 2500);
+
+  const where = groupLabel(group) + (item.day ? ' · ' + item.day : '');
+  showToast(`Added to <b>${esc(where)}</b>`, () => {
+    const w = Store.getWeek(wk);
+    if (w && w.sections[group]) {
+      const idx = w.sections[group].map(i => i.text).lastIndexOf(text);
+      if (idx > -1) w.sections[group].splice(idx, 1);
+      Store.saveWeek(wk, w);
+    }
+    if (addedToTemplate) {
+      const s = Store.getSettings();
+      s.templates[group] = (s.templates[group] || []).filter(t => t.toLowerCase() !== text.toLowerCase());
+      Store.saveSettings(s);
+    }
+    flash = null;
+    if (current === wk) render();
+  });
 });
 
 /* --------------------------- settings --------------------------- */
@@ -622,7 +903,9 @@ function exportWeek(id) {
   const lines = [prettyWeek(id).replace('Week of', 'WEEK')];
   for (const g of GROUPS) {
     lines.push('', g.label.toUpperCase());
-    for (const i of (w && w.sections[g.key]) || []) lines.push(`${MARK[i.status] || '[ ]'} ${i.text}`);
+    for (const i of (w && w.sections[g.key]) || []) {
+      lines.push(`${MARK[i.status] || '[ ]'} ${i.text}${i.day ? ' @' + i.day : ''}`);
+    }
   }
   lines.push('', `Rep count: ${Store.getSettings().pushups}`);
   return lines.join('\n');
@@ -645,7 +928,15 @@ function parsePlan(text) {
     const item = line.match(/^(?:\[( |x|-)\]|[-*•])\s*(.+)$/i);
     if (item && group) {
       const status = item[1] && item[1].toLowerCase() === 'x' ? 'done' : item[1] === '-' ? 'missed' : 'open';
-      sections[group].push({ text: item[2].trim(), status, fromTemplate: false });
+      // An optional trailing " @Wed" sets the item's day.
+      let text = item[2].trim();
+      const dm = text.match(/\s+@(mon|tue|wed|thu|fri|sat|sun)$/i);
+      const entry = { text, status, fromTemplate: false };
+      if (dm) {
+        entry.text = text.slice(0, dm.index).trim();
+        entry.day = dm[1][0].toUpperCase() + dm[1].slice(1).toLowerCase();
+      }
+      sections[group].push(entry);
     }
   }
   const count = Object.values(sections).reduce((n, s) => n + s.length, 0);

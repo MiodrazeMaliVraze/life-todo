@@ -8,11 +8,12 @@ Weekly checklist PWA, hosted on GitHub Pages from `main` (repo root). Data lives
 - `manifest.json`, `icon-*.png`: home-screen install.
 
 ## Architecture
+- Adding items: the `+ Add item` bottom sheet (`#itemDlg`) handles add and edit (long-press an item to edit). Items are `{text,status,fromTemplate,day?}`; never write `day: undefined` (Firestore rejects it). "Repeat every week" also appends the text to that section's template.
 - UI talks only to `Store` (in-memory cache). Local mode → localStorage. Cloud mode → `Store.cloud.saveSettings/saveWeek` → Firestore `users/{uid}` `{settings}` and `users/{uid}/weeks/{weekId}` `{sections}`.
 - Cloud mode renders only after BOTH the settings and weeks snapshots arrive, so the current week is never auto-created over unloaded data.
 - Week id = Monday's date `YYYY-MM-DD`; Sunday maps to the next Monday. Only the current week auto-creates.
 - `buildWeek` seeds from templates (`{n}` = rep count) and carries open non-template items, de-duplicated against template text.
-- Sunday check-in: `exportWeek(id)` / `parsePlan(text)`. Format: `WEEK MM.DD.YY`, then section headers `BILLS/EXERCISE/NUTRITION/CHORES`, then `[ ]`/`[x]`/`[-]` lines. Applying a plan replaces the week.
+- Sunday check-in: `exportWeek(id)` / `parsePlan(text)`. Format: `WEEK MM.DD.YY`, then section headers `BILLS/EXERCISE/NUTRITION/CHORES`, then `[ ]`/`[x]`/`[-]` lines. An optional trailing ` @Mon`…`@Sun` on an item sets its day tag. Applying a plan replaces the week.
 
 ## Mobile constraints (owner uses an iPhone home-screen icon)
 - Zoom fully disabled (viewport meta, `touch-action: pan-x pan-y`, `gesturestart` blocked). Keep it that way.
