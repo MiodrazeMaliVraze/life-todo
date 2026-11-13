@@ -138,6 +138,7 @@
     text-transform: uppercase; color: var(--muted); background: var(--surface);
     border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; margin-top: 1px;
   }
+  .group.focus.overdue h2 { color: #b42318; }
   li.item.new { box-shadow: 0 0 0 3px rgba(74, 222, 128, .45); }
 
   /* Undo toast shown after adding an item. */
@@ -478,6 +479,7 @@ const RANK = { open: 0, done: 1, missed: 2 };
 // Within a status, day-tagged items go Mon -> Sun, then untagged items in saved order.
 const DAY_RANK = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 const dayRank = item => (item.day in DAY_RANK ? DAY_RANK[item.day] : 7);
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 // A tapped item keeps its pre-tap rank until taps stop for ~1s, so a second tap
 // (done -> missed) can't land on a different item that slid into its place.
 const settleHold = new Map();
@@ -589,6 +591,68 @@ function getOrAutoCreate(id) {
 /* ------------------------------ UI ------------------------------ */
 const board = document.getElementById('board');
 
+function makeItem(g, items, idx, week, isNew, chip) {
+  const item = items[idx];
+  const li = document.createElement('li');
+  li.className = 'item' + (isNew ? ' new' : '');
+  li.dataset.status = item.status;
+  li.dataset.k = g.key + ':' + idx;
+
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = item.text;
+
+  const del = document.createElement('button');
+  del.className = 'del';
+  del.textContent = '×';
+  del.title = 'Remove';
+  del.addEventListener('click', ev => {
+    ev.stopPropagation();
+    if (!confirm(`Remove "${item.text}"?`)) return;
+    items.splice(idx, 1);
+    Store.saveWeek(current, week);
+    render();
+  });
+
+  // Chip: section name in Today / Overdue, otherwise the item's day tag.
+  const chipText = chip || item.day;
+  if (chipText) {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = chipText;
+    li.append(dot, label, tag, del);
+  } else {
+    li.append(dot, label, del);
+  }
+
+  // Tap cycles status; press and hold opens the item for editing.
+  let holdTimer = null, held = false, sx = 0, sy = 0;
+  const cancelHold = () => { clearTimeout(holdTimer); holdTimer = null; };
+  li.addEventListener('pointerdown', ev => {
+    if (ev.target === del) return;
+    held = false; sx = ev.clientX; sy = ev.clientY;
+    holdTimer = setTimeout(() => { held = true; openItemSheet('edit', { group: g.key, item }); }, 550);
+  });
+  li.addEventListener('pointermove', ev => {
+    if (holdTimer && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 10) cancelHold();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => li.addEventListener(t, cancelHold));
+  li.addEventListener('contextmenu', ev => ev.preventDefault());
+  li.addEventListener('click', () => {
+    if (held) { held = false; return; }
+    const hk = holdKey(g.key, item);
+    if (!settleHold.has(hk)) settleHold.set(hk, RANK[item.status] ?? 0);
+    scheduleSettle();
+    item.status = CYCLE[item.status] || 'open';
+    Store.saveWeek(current, week);
+    render();
+  });
+  return li;
+}
+
 function render() {
   const week = getOrAutoCreate(current);
   document.getElementById('weekTitle').innerHTML =
@@ -616,98 +680,86 @@ function render() {
   rollBtn.style.display = '';
   addBtn.style.display = '';
 
+  // Today / Overdue: current calendar week only (on Sundays the app shows next week, so they hide).
+  const now = new Date();
+  const calWeek = weekId(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() === 0 ? 1 : 0)));
+  const showFocus = current === calWeek;
+  const todayIdx = (now.getDay() + 6) % 7;   // Mon 0 .. Sun 6
+  const lead = DAY_NAMES[todayIdx].toLowerCase();
+  const isTodaysWorkout = t => {
+    const x = t.trim().toLowerCase();
+    return x.startsWith(lead) || new RegExp('^' + lead.slice(0, 3) + '\\b').test(x);
+  };
+  const eff = (gk, item) => {
+    const f = settleHold.get(holdKey(gk, item));
+    return f !== undefined ? f : (RANK[item.status] ?? 0);
+  };
+  const flashFor = gk => flash && flash.group === gk
+    ? (week.sections[gk] || []).map(i => i.text).lastIndexOf(flash.text) : -1;
+
+  // Items are moved (not copied) into Today / Overdue so nothing shows twice.
+  const pulled = new Set();
+  const focus = { overdue: [], today: [] };
+  if (showFocus) {
+    GROUPS.forEach((g, gi) => (week.sections[g.key] || []).forEach((item, idx) => {
+      let where = null;
+      if (item.day && dayRank(item) === todayIdx) where = 'today';
+      else if (item.day && dayRank(item) < todayIdx && eff(g.key, item) === 0) where = 'overdue';
+      else if (g.key === 'exercise' && !item.day && isTodaysWorkout(item.text)) where = 'today';
+      if (where) { pulled.add(g.key + ':' + idx); focus[where].push({ g, gi, idx, item }); }
+    }));
+    focus.overdue.sort((a, b) => dayRank(a.item) - dayRank(b.item) || a.gi - b.gi || a.idx - b.idx);
+    focus.today.sort((a, b) => eff(a.g.key, a.item) - eff(b.g.key, b.item) || a.gi - b.gi || a.idx - b.idx);
+  }
+
+  const addFocus = (key, title, list, countText) => {
+    if (!list.length) return;
+    const sec = document.createElement('section');
+    sec.className = 'group focus ' + key;
+    const head = document.createElement('div');
+    head.className = 'ghead';
+    head.innerHTML = `<h2>${title}</h2><span class="gcount">${countText}</span>`;
+    sec.appendChild(head);
+    const ul = document.createElement('ul');
+    ul.className = 'items';
+    for (const { g, idx, item } of list) {
+      const chip = key === 'overdue' ? `${item.day} · ${g.label}` : g.label;
+      ul.appendChild(makeItem(g, week.sections[g.key], idx, week, idx === flashFor(g.key), chip));
+    }
+    sec.appendChild(ul);
+    board.appendChild(sec);
+  };
+  addFocus('overdue', 'Overdue', focus.overdue, String(focus.overdue.length));
+  addFocus('today', 'Today', focus.today,
+    `${focus.today.filter(e => e.item.status === 'done').length}/${focus.today.length}`);
+
   let total = 0, done = 0;
 
   for (const g of GROUPS) {
     const items = week.sections[g.key] || [];
-    const gdone = items.filter(i => i.status === 'done').length;
-    total += items.length; done += gdone;
-
-    const sec = document.createElement('section');
-    sec.className = 'group';
-
-    const head = document.createElement('div');
-    head.className = 'ghead';
-    head.innerHTML = `<h2>${g.label}</h2><span class="gcount">${gdone}/${items.length}</span>`;
-    sec.appendChild(head);
-
-    const ul = document.createElement('ul');
-    ul.className = 'items';
-
-    const flashIdx = flash && flash.group === g.key ? items.map(i => i.text).lastIndexOf(flash.text) : -1;
+    total += items.length;
+    done += items.filter(i => i.status === 'done').length;
 
     // Render order; `idx` below is always the item's index in saved order.
     const order = items.map((_, i) => i);
     if (SORTED.has(g.key)) {
-      const rank = i => {
-        const frozen = settleHold.get(holdKey(g.key, items[i]));
-        return frozen !== undefined ? frozen : (RANK[items[i].status] ?? 0);
-      };
-      order.sort((a, b) => rank(a) - rank(b) || dayRank(items[a]) - dayRank(items[b]) || a - b);
+      order.sort((a, b) => eff(g.key, items[a]) - eff(g.key, items[b]) || dayRank(items[a]) - dayRank(items[b]) || a - b);
     }
+    const shown = order.filter(idx => !pulled.has(g.key + ':' + idx));
+    if (!shown.length && items.length) continue;   // everything is up in Today / Overdue
 
-    order.forEach(idx => {
-      const item = items[idx];
-      const li = document.createElement('li');
-      li.className = 'item' + (idx === flashIdx ? ' new' : '');
-      li.dataset.status = item.status;
-      li.dataset.k = g.key + ':' + idx;
+    const gdone = shown.filter(idx => items[idx].status === 'done').length;
+    const sec = document.createElement('section');
+    sec.className = 'group';
+    const head = document.createElement('div');
+    head.className = 'ghead';
+    head.innerHTML = `<h2>${g.label}</h2><span class="gcount">${gdone}/${shown.length}</span>`;
+    sec.appendChild(head);
 
-      const dot = document.createElement('span');
-      dot.className = 'dot';
-
-      const label = document.createElement('span');
-      label.className = 'label';
-      label.textContent = item.text;
-
-      const del = document.createElement('button');
-      del.className = 'del';
-      del.textContent = '×';
-      del.title = 'Remove';
-      del.addEventListener('click', ev => {
-        ev.stopPropagation();
-        if (!confirm(`Remove "${item.text}"?`)) return;
-        items.splice(idx, 1);
-        Store.saveWeek(current, week);
-        render();
-      });
-
-      if (item.day) {
-        const tag = document.createElement('span');
-        tag.className = 'tag';
-        tag.textContent = item.day;
-        li.append(dot, label, tag, del);
-      } else {
-        li.append(dot, label, del);
-      }
-
-      // Tap cycles status; press and hold opens the item for editing.
-      let holdTimer = null, held = false, sx = 0, sy = 0;
-      const cancelHold = () => { clearTimeout(holdTimer); holdTimer = null; };
-      li.addEventListener('pointerdown', ev => {
-        if (ev.target === del) return;
-        held = false; sx = ev.clientX; sy = ev.clientY;
-        holdTimer = setTimeout(() => { held = true; openItemSheet('edit', { group: g.key, item }); }, 550);
-      });
-      li.addEventListener('pointermove', ev => {
-        if (holdTimer && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 10) cancelHold();
-      });
-      ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => li.addEventListener(t, cancelHold));
-      li.addEventListener('contextmenu', ev => ev.preventDefault());
-      li.addEventListener('click', () => {
-        if (held) { held = false; return; }
-        if (SORTED.has(g.key)) {
-          const hk = holdKey(g.key, item);
-          if (!settleHold.has(hk)) settleHold.set(hk, RANK[item.status] ?? 0);
-          scheduleSettle();
-        }
-        item.status = CYCLE[item.status] || 'open';
-        Store.saveWeek(current, week);
-        render();
-      });
-      ul.appendChild(li);
-    });
-
+    const ul = document.createElement('ul');
+    ul.className = 'items';
+    const fi = flashFor(g.key);
+    shown.forEach(idx => ul.appendChild(makeItem(g, items, idx, week, idx === fi, null)));
     sec.appendChild(ul);
     board.appendChild(sec);
   }
