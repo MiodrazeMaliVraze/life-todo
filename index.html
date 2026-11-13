@@ -470,6 +470,40 @@ const GROUPS = [
 ];
 const CYCLE = { open: 'done', done: 'missed', missed: 'open' };
 
+// Display-only sorting: open items first, then done, then missed. Saved order never
+// changes, so un-checking an item returns it to its original spot. Exercise is a
+// Mon-Sun schedule and is never sorted.
+const SORTED = new Set(['bills', 'nutrition', 'chores']);
+const RANK = { open: 0, done: 1, missed: 2 };
+// A tapped item keeps its pre-tap rank until taps stop for ~1s, so a second tap
+// (done -> missed) can't land on a different item that slid into its place.
+const settleHold = new Map();
+let settleTimer = null;
+const holdKey = (groupKey, item) => groupKey + '\u0000' + item.text;
+
+function scheduleSettle() {
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => {
+    const before = new Map();
+    board.querySelectorAll('li.item').forEach(li => before.set(li.dataset.k, li.getBoundingClientRect().top));
+    settleHold.clear();
+    render();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // FLIP: slide each moved item from its old position to its new one.
+    board.querySelectorAll('li.item').forEach(li => {
+      const was = before.get(li.dataset.k);
+      if (was === undefined) return;
+      const dy = was - li.getBoundingClientRect().top;
+      if (!dy) return;
+      li.style.transition = 'none';
+      li.style.transform = `translateY(${dy}px)`;
+      li.getBoundingClientRect();   // force reflow so the transition starts from here
+      li.style.transition = 'transform .35s ease';
+      li.style.transform = '';
+    });
+  }, 1000);
+}
+
 /* ---------------------------- dates ----------------------------- */
 function mondayOf(d) {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -599,10 +633,22 @@ function render() {
 
     const flashIdx = flash && flash.group === g.key ? items.map(i => i.text).lastIndexOf(flash.text) : -1;
 
-    items.forEach((item, idx) => {
+    // Render order; `idx` below is always the item's index in saved order.
+    const order = items.map((_, i) => i);
+    if (SORTED.has(g.key)) {
+      const rank = i => {
+        const frozen = settleHold.get(holdKey(g.key, items[i]));
+        return frozen !== undefined ? frozen : (RANK[items[i].status] ?? 0);
+      };
+      order.sort((a, b) => rank(a) - rank(b) || a - b);
+    }
+
+    order.forEach(idx => {
+      const item = items[idx];
       const li = document.createElement('li');
       li.className = 'item' + (idx === flashIdx ? ' new' : '');
       li.dataset.status = item.status;
+      li.dataset.k = g.key + ':' + idx;
 
       const dot = document.createElement('span');
       dot.className = 'dot';
@@ -647,6 +693,11 @@ function render() {
       li.addEventListener('contextmenu', ev => ev.preventDefault());
       li.addEventListener('click', () => {
         if (held) { held = false; return; }
+        if (SORTED.has(g.key)) {
+          const hk = holdKey(g.key, item);
+          if (!settleHold.has(hk)) settleHold.set(hk, RANK[item.status] ?? 0);
+          scheduleSettle();
+        }
         item.status = CYCLE[item.status] || 'open';
         Store.saveWeek(current, week);
         render();
