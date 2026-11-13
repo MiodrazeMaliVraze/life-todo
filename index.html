@@ -351,6 +351,7 @@
       <label>Chores template</label>
       <textarea id="tplChores"></textarea>
     </div>
+    <div class="hint" id="appVersion" style="margin-top:14px"></div>
     <div class="dlg-actions">
       <button class="btn secondary" id="signOutBtn" style="margin-right:auto">Sign out</button>
       <button class="btn secondary" id="cancelSettings">Cancel</button>
@@ -468,6 +469,8 @@ function defaultSettings() {
   };
 }
 
+// Keep in sync with CACHE in sw.js. Shown at the bottom of Settings so you can tell which version is running.
+const APP_VERSION = 'v14';
 const GROUPS = [
   { key: 'bills', label: 'Bills' },
   { key: 'exercise', label: 'Exercise' },
@@ -890,6 +893,19 @@ if (window.visualViewport) {
   });
 }
 
+// Safety net: if iOS still starts selecting page text, clear it. Text selected inside an
+// input/textarea (e.g. the edit box) is left alone.
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection && window.getSelection();
+  if (!sel || sel.isCollapsed) return;
+  const text = sel.toString();
+  if (!text) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && typeof a.selectionStart === 'number'
+      && text === a.value.slice(a.selectionStart, a.selectionEnd)) return;
+  sel.removeAllRanges();
+});
+
 let toastTimer = null;
 function showToast(msg, onUndo) {
   const t = document.getElementById('toast');
@@ -975,6 +991,7 @@ document.getElementById('itemForm').addEventListener('submit', ev => {
 });
 
 /* --------------------------- settings --------------------------- */
+document.getElementById('appVersion').textContent = 'Version ' + APP_VERSION;
 const dlg = document.getElementById('settingsDlg');
 document.getElementById('openSettings').addEventListener('click', () => {
   const s = Store.getSettings();

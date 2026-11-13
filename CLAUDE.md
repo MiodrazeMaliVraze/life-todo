@@ -4,7 +4,7 @@ Weekly checklist PWA, hosted on GitHub Pages from `main` (repo root). Data lives
 
 ## Files
 - `index.html`: the whole app (CSS, classic script for UI/state, module script for Firebase).
-- `sw.js`: offline cache. **Bump `CACHE` (`life-todo-vN`) on every change** or phones keep the old version. Only same-origin and `www.gstatic.com` are cached; Firestore traffic must bypass the worker.
+- `sw.js`: offline cache. **Bump `CACHE` (`life-todo-vN`) on every change** or phones keep the old version, and bump `APP_VERSION` in `index.html` to the same N (it's shown at the bottom of Settings so the owner can confirm the update arrived). Only same-origin and `www.gstatic.com` are cached; Firestore traffic must bypass the worker.
 - `manifest.json`, `icon-*.png`: home-screen install.
 
 ## Architecture
@@ -23,7 +23,7 @@ Weekly checklist PWA, hosted on GitHub Pages from `main` (repo root). Data lives
 - Large tap targets; week arrows are 48×48.
 - Status bar style `default`. Do not switch to `black-translucent` (causes iOS header blur).
 - Dialogs are capped to screen height with sticky action buttons.
-- The board is `-webkit-user-select: none` (iOS needs the prefix) so long-press-to-edit doesn't select text; keep it, and the add/edit sheet (`#itemDlg`) too, but never on inputs: `#itemText` must stay `user-select: text` or iOS won't let you type.
+- The board is `-webkit-user-select: none` (iOS needs the prefix) so long-press-to-edit doesn't select text; keep it, and the add/edit sheet (`#itemDlg`) too, but never on inputs: `#itemText` must stay `user-select: text` or iOS won't let you type. A `selectionchange` listener also clears any stray non-input selection.
 
 ## Workflow
 - Test at iPhone SE and iPhone 13 sizes with Playwright. To test without Firebase, copy `index.html` with `FIREBASE_CONFIG = null` (local mode).
