@@ -470,11 +470,14 @@ const GROUPS = [
 ];
 const CYCLE = { open: 'done', done: 'missed', missed: 'open' };
 
-// Display-only sorting: open items first, then done, then missed. Saved order never
+// Display-only sorting: open items first, then done, then missed (each by day). Saved order never
 // changes, so un-checking an item returns it to its original spot. Exercise is a
 // Mon-Sun schedule and is never sorted.
 const SORTED = new Set(['bills', 'nutrition', 'chores']);
 const RANK = { open: 0, done: 1, missed: 2 };
+// Within a status, day-tagged items go Mon -> Sun, then untagged items in saved order.
+const DAY_RANK = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+const dayRank = item => (item.day in DAY_RANK ? DAY_RANK[item.day] : 7);
 // A tapped item keeps its pre-tap rank until taps stop for ~1s, so a second tap
 // (done -> missed) can't land on a different item that slid into its place.
 const settleHold = new Map();
@@ -640,7 +643,7 @@ function render() {
         const frozen = settleHold.get(holdKey(g.key, items[i]));
         return frozen !== undefined ? frozen : (RANK[items[i].status] ?? 0);
       };
-      order.sort((a, b) => rank(a) - rank(b) || a - b);
+      order.sort((a, b) => rank(a) - rank(b) || dayRank(items[a]) - dayRank(items[b]) || a - b);
     }
 
     order.forEach(idx => {

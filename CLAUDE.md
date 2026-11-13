@@ -9,7 +9,7 @@ Weekly checklist PWA, hosted on GitHub Pages from `main` (repo root). Data lives
 
 ## Architecture
 - Adding items: the `+ Add item` bottom sheet (`#itemDlg`) handles add and edit (long-press an item to edit). Items are `{text,status,fromTemplate,day?}`; never write `day: undefined` (Firestore rejects it). "Repeat every week" also appends the text to that section's template.
-- Sorting: Bills/Nutrition/Chores render open → done → missed (display only; saved order is untouched, and `idx` in `render()` is always the saved index). A tapped item keeps its pre-tap rank until taps pause ~1s (`settleHold`), then slides into place (FLIP). Exercise is never sorted.
+- Sorting: Bills/Nutrition/Chores render open → done → missed, and within each by day tag Mon→Sun then untagged (display only; saved order is untouched, and `idx` in `render()` is always the saved index). A tapped item keeps its pre-tap rank until taps pause ~1s (`settleHold`), then slides into place (FLIP). Exercise is never sorted.
 - UI talks only to `Store` (in-memory cache). Local mode → localStorage. Cloud mode → `Store.cloud.saveSettings/saveWeek` → Firestore `users/{uid}` `{settings}` and `users/{uid}/weeks/{weekId}` `{sections}`.
 - Cloud mode renders only after BOTH the settings and weeks snapshots arrive, so the current week is never auto-created over unloaded data.
 - Week id = Monday's date `YYYY-MM-DD`; Sunday maps to the next Monday. Only the current week auto-creates.
