@@ -23,7 +23,7 @@ Weekly checklist PWA, hosted on GitHub Pages from `main` (repo root). Data lives
 - Large tap targets; week arrows are 48×48.
 - Status bar style `default`. Do not switch to `black-translucent` (causes iOS header blur).
 - Dialogs are capped to screen height with sticky action buttons.
-- The board is `-webkit-user-select: none` (iOS needs the prefix) so long-press-to-edit doesn't select text; keep it, and don't apply it to inputs.
+- The board is `-webkit-user-select: none` (iOS needs the prefix) so long-press-to-edit doesn't select text; keep it, and the add/edit sheet (`#itemDlg`) too, but never on inputs: `#itemText` must stay `user-select: text` or iOS won't let you type.
 
 ## Workflow
 - Test at iPhone SE and iPhone 13 sizes with Playwright. To test without Firebase, copy `index.html` with `FIREBASE_CONFIG = null` (local mode).

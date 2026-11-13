@@ -1,5 +1,5 @@
 /* Minimal offline cache so the app opens without a connection. */
-const CACHE = 'life-todo-v12';
+const CACHE = 'life-todo-v13';
 const ASSETS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {

@@ -165,6 +165,10 @@
   dialog#itemDlg[open] { animation: sheetUp .2s ease-out; }
   @keyframes sheetUp { from { transform: translateY(36px); opacity: .5; } to { transform: none; opacity: 1; } }
   .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: -8px auto 14px; }
+  /* No text selection on the sheet's chips/labels (iOS selects them when the sheet opens under a long-press),
+     but the text box must stay selectable or iOS won't let you type in it. */
+  #itemDlg, #itemDlg * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #itemDlg #itemText { -webkit-user-select: text; user-select: text; }
   #itemText {
     width: 100%; background: var(--bg); color: var(--text); font-family: inherit;
     border: 1.5px solid var(--text); border-radius: 12px; padding: 13px 14px;
